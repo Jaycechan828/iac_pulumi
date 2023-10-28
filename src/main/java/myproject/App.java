@@ -1,6 +1,5 @@
 package myproject;
 
-
 import com.pulumi.Pulumi;
 import com.pulumi.aws.ec2.*;
 import com.pulumi.aws.ec2.Instance;
@@ -13,20 +12,11 @@ import com.pulumi.aws.rds.SubnetGroupArgs;
 import com.pulumi.aws.rds.inputs.ParameterGroupParameterArgs;
 import com.pulumi.core.Output;
 import com.pulumi.aws.s3.Bucket;
-
-import com.pulumi.*;
-import com.pulumi.aws.ec2.*;
-import com.pulumi.aws.ec2.SecurityGroup;
-
-import java.util.*;
-
-
 import com.pulumi.core.Output;
 import com.pulumi.Context;
 import com.pulumi.Pulumi;
 import com.pulumi.aws.ec2.inputs.InstanceRootBlockDeviceArgs;
 import com.pulumi.aws.ec2.inputs.SecurityGroupIngressArgs;
-
 import com.pulumi.aws.AwsFunctions;
 import com.pulumi.aws.inputs.GetAvailabilityZonesArgs;
 
@@ -61,12 +51,13 @@ public class App {
     private static String DbPassword;
     private static String userData;
 
+
+    public static void main(String[] args) {
+
+        Pulumi.run(App::infraSetup);
+    }
     private static void infraSetup(Context ctx){
 
-
-
-
-    private static void infraSetup(Context ctx) {
 
         var config = ctx.config();
         String cidrBlock = config.require("cidrBlock");
@@ -74,7 +65,6 @@ public class App {
         String privateSubnetBaseCIDR = config.require("privateSubnetBaseCIDR");
         String publicRouteTableCIDR = config.require("publicRouteTableCIDR");
         String amiId = config.require("amiId");
-
 
         setVpc(cidrBlock);
         setIgw();
@@ -88,66 +78,26 @@ public class App {
             List<String> zones = az.names();
             int zoneSize = zones.size();
 
-        // Create a VPC
-        Vpc vpc = new Vpc("my-vpc", VpcArgs.builder()
-                .cidrBlock(cidrBlock)
-                .build());
-
-        // Create an Internet Gateway
-        InternetGateway igw = new InternetGateway("my-igw", InternetGatewayArgs.builder()
-                .vpcId(vpc.id())
-                .build());
-
-        // Create a public Route Table
-        RouteTable publicRouteTable = new RouteTable("public-route-table", RouteTableArgs.builder()
-                .vpcId(vpc.id())
-                .build());
-
-        // Create a route in the public Route Table
-        Route igwRoute = new Route("igw-route", RouteArgs.builder()
-                .routeTableId(publicRouteTable.id())
-                .destinationCidrBlock(publicRouteTableCIDR)
-                .gatewayId(igw.id())
-                .build());
-
-        // Create a private Route Table
-        RouteTable privateRouteTable = new RouteTable("private-route-table", RouteTableArgs.builder()
-                .vpcId(vpc.id())
-                .build());
-
-        availabilityZones.apply(az -> {
-            List<String> zones = az.names();
-            int zoneSize = zones.size();
-
-
-
             for (int i = 0; i < zoneSize && i < 3; i++) {
                 String zone = zones.get(i);
 
 
                 int publicThirdOctet = extractThirdOctet(publicSubnetBaseCIDR) + i;
-
                 int privateThirdOctet = extractThirdOctet(privateSubnetBaseCIDR) + i;
-
-
 
                 String publicSubnetCIDR = "10.0." + publicThirdOctet + ".0/24";
                 String privateSubnetCIDR = "10.0." + privateThirdOctet + ".0/24";
 
-
                 setPublicSubnet("public-subnet-" + i, publicSubnetCIDR, zone);
-
                 new RouteTableAssociation("public-rta-" + i, RouteTableAssociationArgs.builder()
                         .subnetId(publicSubnet.id())
                         .routeTableId(publicRouteTable.id())
                         .build());
                 setPrivateSubnet("private-subnet" + i, privateSubnetCIDR, zone);
-
                 new RouteTableAssociation("private-rta-" + i, RouteTableAssociationArgs.builder()
                         .subnetId(privateSubnet.id())
                         .routeTableId(privateRouteTable.id())
                         .build());
-
                 privateSubnet.id().apply(id ->{
                     subnetsGroup.add(id);
 
@@ -404,12 +354,10 @@ public class App {
                 .build());
     }
 
-    
 
-
-                private static int extractThirdOctet (String cidr){
-                    String[] parts = cidr.split("\\.");
-                    return Integer.parseInt(parts[2]);
-                }
+    private static int extractThirdOctet(String cidr) {
+        String[] parts = cidr.split("\\.");
+        return Integer.parseInt(parts[2]);
     }
 
+}
