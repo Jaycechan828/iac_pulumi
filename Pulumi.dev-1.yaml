@@ -1,9 +1,11 @@
 config:
-  aws:profile: dev
+
+  aws:profile: demo
   aws:region: us-west-2
+  iac-pulumi-v1:amiId: ami-0f392c7dc8ce72e31
   iac-pulumi-v1:cidrBlock: 10.0.0.0/16
   iac-pulumi-v1:privateSubnetBaseCIDR: 10.0.11.0/24
   iac-pulumi-v1:publicRouteTableCIDR: 0.0.0.0/0
   iac-pulumi-v1:publicSubnetBaseCIDR: 10.0.2.0/24
-  iac-pulumi-v1:amiId: ami-04141fd1b7e9d9647
+
 
