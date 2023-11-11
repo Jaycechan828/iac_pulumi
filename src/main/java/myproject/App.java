@@ -3,6 +3,8 @@ package myproject;
 import com.pulumi.Pulumi;
 import com.pulumi.aws.ec2.*;
 import com.pulumi.aws.ec2.Instance;
+import com.pulumi.aws.ec2.inputs.SecurityGroupEgressArgs;
+import com.pulumi.aws.iam.*;
 import com.pulumi.aws.opsworks.RdsDbInstance;
 import com.pulumi.aws.opsworks.RdsDbInstanceArgs;
 import com.pulumi.aws.rds.ParameterGroup;
@@ -10,6 +12,10 @@ import com.pulumi.aws.rds.ParameterGroupArgs;
 import com.pulumi.aws.rds.SubnetGroup;
 import com.pulumi.aws.rds.SubnetGroupArgs;
 import com.pulumi.aws.rds.inputs.ParameterGroupParameterArgs;
+import com.pulumi.aws.route53.Record;
+import com.pulumi.aws.route53.RecordArgs;
+import com.pulumi.aws.route53.inputs.GetZoneArgs;
+import com.pulumi.aws.route53.outputs.GetZoneResult;
 import com.pulumi.core.Output;
 import com.pulumi.aws.s3.Bucket;
 import com.pulumi.core.Output;
@@ -26,6 +32,11 @@ import java.util.stream.Collectors;
 
 import com.pulumi.aws.outputs.GetAvailabilityZonesResult;
 import com.pulumi.deployment.InvokeOptions;
+import com.pulumi.resources.CustomResourceOptions;
+
+import static com.pulumi.codegen.internal.Serialization.*;
+import com.pulumi.aws.route53.*;
+
 
 
 public class App {
@@ -50,6 +61,8 @@ public class App {
     private static String DbUsername;
     private static String DbPassword;
     private static String userData;
+    private static Role cloudWatchRole;
+    private static InstanceProfile cwProfile;
 
 
     public static void main(String[] args) {
@@ -65,6 +78,7 @@ public class App {
         String privateSubnetBaseCIDR = config.require("privateSubnetBaseCIDR");
         String publicRouteTableCIDR = config.require("publicRouteTableCIDR");
         String amiId = config.require("amiId");
+        String account = config.require("account");
 
         setVpc(cidrBlock);
         setIgw();
@@ -73,6 +87,12 @@ public class App {
         setPrivateRouteTable("private-route-table");
         DbPassword = "Qq18284530122";
 //        privateSubnetsGroup = new SubnetGroup("db-private-subnets-group");
+
+
+        final var hosted = Route53Functions.getZone(GetZoneArgs.builder()
+                .name(account +".jaycec.me")
+                .privateZone(false)
+                .build());
 
         getAvailabilityZones().apply(az -> {
             List<String> zones = az.names();
@@ -129,8 +149,13 @@ public class App {
 
 
             setDbInstance("csye6225-database");
-
-
+            setIAMRole("csye6225_CW");
+            RolePolicyAttachment cwAttach = new RolePolicyAttachment("cloudWatchPolicyAttachment",
+                    new RolePolicyAttachmentArgs.Builder()
+                    .policyArn("arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy")
+                            .role(cloudWatchRole.name())
+                            .build());
+            setInstanceProfile("CW_Profile");
 
             rdsDbInstance.address().apply(address ->{
                 DbAddress = address;
@@ -150,8 +175,10 @@ public class App {
             return Output.ofNullable(null);
         });
 
+
+
         try {
-            Thread.sleep(480000);
+            Thread.sleep(500000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -176,11 +203,35 @@ public class App {
                 "sudo chown csye6225:csye6225 /opt/csye6225/webapp.jar",
                 "sudo chown csye6225:csye6225 /opt/csye6225/users.csv",
                 "sudo chown csye6225:csye6225 /opt/csye6225/application.properties",
+
+                "sudo touch /var/log/csye6225.log",
+                "sudo chown csye6225:csye6225 /var/log/csye6225.log",
+                "sudo chmod u+rw,g+rw /var/log/csye6225.log",
+
                 "sudo systemctl enable /etc/systemd/system/csye6225.service",
-                "sudo systemctl start csye6225.service"
+                "sudo systemctl start csye6225.service",
+
+                "sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \\\n" +
+                        "    -a fetch-config \\\n" +
+                        "    -m ec2 \\\n" +
+                        "    -c file:/opt/cloudwatch-config.json \\\n" +
+                        "    -s"
         );
 
         setAppInstance("app-instance", amiId, userData);
+
+        try {
+            Thread.sleep(60000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        Record record = new Record("webapp-record", new RecordArgs.Builder()
+                .type("A")
+                .name("")
+                .ttl(30)
+                .records(appInstance.publicIp().applyValue(List::of))
+                .zoneId(hosted.applyValue(getZoneResult -> getZoneResult.id()))
+                .build());
 
         ctx.export("vpcId", vpc.id());
 //        ctx.export("instance-id", appInstance.id());
@@ -285,6 +336,20 @@ public class App {
                                 .cidrBlocks(Arrays.asList("0.0.0.0/0"))
                                 .build()
                 ))
+                .egress(Arrays.asList(
+                        new SecurityGroupEgressArgs.Builder()
+                                .protocol("tcp")
+                                .fromPort(80)
+                                .toPort(80)
+                                .cidrBlocks(Arrays.asList("0.0.0.0/0"))
+                                .build(),
+                        new SecurityGroupEgressArgs.Builder()
+                                .protocol("tcp")
+                                .fromPort(443)
+                                .toPort(443)
+                                .cidrBlocks(Arrays.asList("0.0.0.0/0"))
+                                .build()
+                ))
                 .build());
     }
     private static void setDBSecurityGroup(String name){
@@ -346,13 +411,37 @@ public class App {
                 .subnetId(publicSubnets.get(String.valueOf(publicSubnets.size()-1)).id())
                 .keyName("test")
                 .userData(userData)
+                .iamInstanceProfile(cwProfile.name())
                 .rootBlockDevice(InstanceRootBlockDeviceArgs.builder()
                         .volumeType("gp2")
                         .volumeSize(25)
                         .deleteOnTermination(true)
                         .build())
+
                 .build());
     }
+    private static void setIAMRole(String name){
+        cloudWatchRole = new Role(name, RoleArgs.builder()
+                .assumeRolePolicy(serializeJson(
+                        jsonObject(
+                                jsonProperty("Version", "2012-10-17"),
+                                jsonProperty("Statement", jsonArray(jsonObject(
+                                        jsonProperty("Action", "sts:AssumeRole"),
+                                        jsonProperty("Effect", "Allow"),
+                                        jsonProperty("Sid", ""),
+                                        jsonProperty("Principal", jsonObject(
+                                                jsonProperty("Service", "ec2.amazonaws.com")
+                                        ))
+                                )))
+                        )))
+                .build());
+    }
+    private static void setInstanceProfile (String name){
+        cwProfile = new InstanceProfile(name, new InstanceProfileArgs.Builder()
+                .role(cloudWatchRole.name())
+                .build());
+    }
+
 
 
     private static int extractThirdOctet(String cidr) {
