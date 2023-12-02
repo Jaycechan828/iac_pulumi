@@ -28,6 +28,13 @@
             <artifactId>aws</artifactId>
             <version>6.1.0</version>
         </dependency>
+
+        <dependency>
+            <groupId>com.pulumi</groupId>
+            <artifactId>gcp</artifactId>
+            <version>7.3.0-alpha.1700614129+ce718ae9</version>
+        </dependency>
+
     </dependencies>
 
     <build>
