@@ -8,3 +8,4 @@ config:
   iac-pulumi-v1:privateSubnetBaseCIDR: 10.0.11.0/24
   iac-pulumi-v1:publicRouteTableCIDR: 0.0.0.0/0
   iac-pulumi-v1:publicSubnetBaseCIDR: 10.0.2.0/24
+  iac-pulumi-v1:certificateArn: arn:aws:acm:us-west-2:048190965240:certificate/ba0af58a-8141-496d-8bdf-28bbfcfe2840
